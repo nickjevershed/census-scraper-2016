@@ -543,8 +543,3 @@ for i, sa2 in enumerate(sa2s[:2]):
 
 		print "done"
 
-#### Output as json files for the thing
-
-
-		
-
