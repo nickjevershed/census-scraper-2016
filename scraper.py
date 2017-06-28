@@ -20,7 +20,7 @@ def getCellValue(wb,sheet,col,row):
 	return wb.sheet_by_name(sheet).cell_value(getRowPos(row),getColPos(col))
 
 def getPercent(val,total):
-	if val != 0:
+	if val != 0 and total != 0:
 		percent = (val/total*100)
 	else:
 		percent = 0	
@@ -28,12 +28,13 @@ def getPercent(val,total):
 
 religionExclude = ["Christianity:", "Total","Other Religions:","Secular Beliefs and Other Spiritual Beliefs"]
 languageExclude = ["Chinese languages:", "Total","Other Religions:"]
+ancestryExclude = ['Other(e)','Ancestry not stated']
 
 with open("referenceData/sa2.json") as json_file:
 	sa2s = json.load(json_file)
 
-for i, sa2 in enumerate(sa2s[:2]):
-	url = "http://www.censusdata.abs.gov.au/CensusOutput/copsub.NSF/All%20docs%20by%20catNo/2011~Community%20Profile~{sa2}/$File/TSP_{sa2}.zip?OpenElement".format(sa2=str(sa2['SA2_MAIN16']))
+for i, sa2 in enumerate(sa2s):
+	url = "http://www.censusdata.abs.gov.au/CensusOutput/copsub2016.NSF/All%20docs%20by%20catNo/2016~Community%20Profile~{sa2}/$File/TSP_{sa2}.zip?OpenElement".format(sa2=str(sa2['SA2_MAIN16']))
 	print i
 	print "getting", url
 	# Fetching the URL with requests
@@ -49,12 +50,10 @@ for i, sa2 in enumerate(sa2s[:2]):
 		strFile = BytesIO()
 		strFile.write(r.content)
 
-		# Saves files locally
+		with open('files/{sa2}.zip'.format(sa2=str(sa2['SA2_MAIN16'])), 'wb') as f:
+			f.write(r.content)
 
-		# with open('files/{sa2}.zip'.format(sa2=str(sa2['SA2_MAIN16'])), 'wb') as f:
-		# 	f.write(r.content)
-
-		input_zip = ZipFile(strFile, 'r')
+		input_zip = ZipFile('files/{sa2}.zip'.format(sa2=str(sa2['SA2_MAIN16'])), 'r')
 		ex_file = input_zip.open("TSP_" + str(sa2['SA2_MAIN16']) + ".XLS")
 		content = ex_file.read()
 
@@ -84,12 +83,15 @@ for i, sa2 in enumerate(sa2s[:2]):
 		
 		data['married_males'] = getCellValue(wb,'T 05a','B',29)
 		data['married_females'] = getCellValue(wb,'T 05a','C',29)
+		data['married_persons'] = data['married_males'] + data['married_females']
 
 		data['defacto_males'] = getCellValue(wb,'T 05a','E',29)
 		data['defacto_females'] = getCellValue(wb,'T 05a','F',29)
+		data['defacto_persons'] = data['defacto_males'] + data['defacto_females']
 
 		data['notmarried_males'] = getCellValue(wb,'T 05a','H',29)
 		data['notmarried_females'] = getCellValue(wb,'T 05a','I',29)
+		data['notmarried_persons'] = data['notmarried_males'] + data['notmarried_females']
 
 		data['total_relationship_males'] = getCellValue(wb,'T 05a','K',29)
 		data['total_relationship_females'] = getCellValue(wb,'T 05a','L',29)
@@ -98,11 +100,16 @@ for i, sa2 in enumerate(sa2s[:2]):
 		data['percent_married_males'] = getPercent(data['married_males'],data['total_relationship_males'])
 		data['percent_married_females'] = getPercent(data['married_females'],data['total_relationship_females'])
 
+		data['percent_married_persons'] = getPercent(data['married_persons'],data['total_relationship_persons'])
+
 		data['percent_defacto_males'] = getPercent(data['defacto_males'],data['total_relationship_males'])
 		data['percent_defacto_females'] = getPercent(data['defacto_females'],data['total_relationship_females'])
 
+		data['percent_defacto_persons'] = getPercent(data['defacto_persons'],data['total_relationship_persons'])
+
 		data['percent_notmarried_males'] = getPercent(data['notmarried_males'],data['total_relationship_males'])
 		data['percent_notmarried_females'] = getPercent(data['notmarried_females'],data['total_relationship_females'])
+		data['percent_notmarried_persons'] = getPercent(data['notmarried_persons'],data['total_relationship_persons'])
 
 		data['indig_males'] = getCellValue(wb,'T 06a','B',27)
 		data['indig_females'] = getCellValue(wb,'T 06a','C',27)
@@ -129,33 +136,43 @@ for i, sa2 in enumerate(sa2s[:2]):
 
 		for x in range(11,45):
 			countryItem = {}
-			countryItem['country'] = getCellValue(wb,'T 08','A',x).strip()
+			countryItem['label'] = getCellValue(wb,'T 08','A',x).strip()
 			countryItem['males'] = getCellValue(wb,'T 08','B',x)
 			countryItem['females'] = getCellValue(wb,'T 08','C',x)
 			countryItem['persons'] = getCellValue(wb,'T 08','D',x)
 			
-			# countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','D',x), getCellValue(wb,'T 08','D',49))
-			countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','D',x), getCellValue(wb,'T 08','D',51))
+			# countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','D',x), getCellValue(wb,'T 08','D',49))
+			countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','D',x), getCellValue(wb,'T 08','D',49))
 
 			countriesOfBirth.append(countryItem)
 
 		countriesOfBirth = sorted(countriesOfBirth, key=itemgetter('persons'), reverse=True) 
 		
-		data['countries_of_birth'] = str(countriesOfBirth)
+		data['countries_of_birth'] = json.dumps(countriesOfBirth)
+
+		data['born_in_australia'] = getCellValue(wb,'T 08','D',11)
+		data['country_not_stated'] = getCellValue(wb,'T 08','D',47)
+		data['total_country_persons'] = getCellValue(wb,'T 08','D',49)
+
+		data['born_overseas'] = data['total_country_persons'] - data['born_in_australia'] - data['country_not_stated']
+
+		data['percent_born_overseas'] = getPercent(data['born_overseas'],data['total_country_persons'])
+
 
 		ancestries = []
 
 		for x in range(12,43):
-			ancestryItem = {}
-			countryItem['ancestry'] = getCellValue(wb,'T 09a','A',x).strip()
-			ancestryItem['persons'] = getCellValue(wb,'T 09a','G',x)
-			ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09a','G',x),getCellValue(wb,'T 09a','G',45))
+			if getCellValue(wb,'T 09a','A',x).strip() not in ancestryExclude:
+				ancestryItem = {}
+				ancestryItem['label'] = getCellValue(wb,'T 09a','A',x).strip()
+				ancestryItem['persons'] = getCellValue(wb,'T 09a','G',x)
+				ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09a','G',x),getCellValue(wb,'T 09a','G',45))
 
-			ancestries.append(ancestryItem)
+				ancestries.append(ancestryItem)
 
 		ancestries = sorted(ancestries, key=itemgetter('persons'), reverse=True)
 
-		data['ancestries'] = str(ancestries)
+		data['ancestries'] = json.dumps(ancestries)
 
 		languages = []
 
@@ -164,34 +181,43 @@ for i, sa2 in enumerate(sa2s[:2]):
 				langItem = {}
 
 				if getCellValue(wb,'T 10','A',x).strip() == "Other(b)":
-					langItem['language'] = "Other Chinese"
+					langItem['label'] = "Other Chinese"
 				else:
-					langItem['language'] = getCellValue(wb,'T 10','A',x).strip()	
+					langItem['label'] = getCellValue(wb,'T 10','A',x).strip()	
 				langItem['persons'] = getCellValue(wb,'T 10','D',x)
 				
 				# langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','D',x),getCellValue(wb,'T 10','D',54))
-				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','D',x),getCellValue(wb,'T 10','D',56))
+				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','D',x),getCellValue(wb,'T 10','D',54))
 
 				languages.append(langItem)
 
 		languages = sorted(languages, key=itemgetter('persons'), reverse=True)
 
-		data['languages'] = str(languages)
+		data['languages'] = json.dumps(languages)
+
+		data['language_english'] = getCellValue(wb,'T 10','D',11)
+		data['language_not_stated'] = getCellValue(wb,'T 10','D',52)
+		data['total_language_persons'] = getCellValue(wb,'T 10','D',54)
+
+		data['language_other'] = data['total_language_persons'] - data['language_english'] - data['language_not_stated']
+
+		data['percent_language_other'] = getPercent(data['language_other'],data['total_language_persons'])
+
 
 		religions = []
 
-		for x in range(14,45):
+		for x in range(13,45):
 			# print getCellValue(wb,'T 12a','A',x)
 			if getCellValue(wb,'T 12a','A',x).strip() not in religionExclude:		
 				religionItem = {}
-				religionItem['religion'] = getCellValue(wb,'T 12a','A',x).strip()
+				religionItem['label'] = getCellValue(wb,'T 12a','A',x).strip()
 				religionItem['persons'] = getCellValue(wb,'T 12a','K',x)
 				religionItem['persons_percent'] = getPercent(getCellValue(wb,'T 12a','K',x),getCellValue(wb,'T 12a','K',47))
 				religions.append(religionItem)
 
 		religions = sorted(religions, key=itemgetter('persons'), reverse=True)
 
-		data['religions'] = str(religions)
+		data['religions'] = json.dumps(religions)
 
 		data['seperate_house'] = getCellValue(wb,'T 15a','H',13)
 		data['seperate_house_percent'] = getPercent(getCellValue(wb,'T 15a','H',13),getCellValue(wb,'T 15a','H',36))
@@ -264,6 +290,14 @@ for i, sa2 in enumerate(sa2s[:2]):
 		data['percent_notmarried_males'] = getPercent(data['notmarried_males'],data['total_relationship_males'])
 		data['percent_notmarried_females'] = getPercent(data['notmarried_females'],data['total_relationship_females'])
 
+
+		data['married_persons'] = data['married_males'] + data['married_females']
+		data['defacto_persons'] = data['defacto_males'] + data['defacto_females']
+		data['notmarried_persons'] = data['notmarried_males'] + data['notmarried_females']
+		data['percent_married_persons'] = getPercent(data['married_persons'],data['total_relationship_persons'])
+		data['percent_defacto_persons'] = getPercent(data['defacto_persons'],data['total_relationship_persons'])
+		data['percent_notmarried_persons'] = getPercent(data['notmarried_persons'],data['total_relationship_persons'])	
+
 		data['indig_males'] = getCellValue(wb,'T 06a','B',46)
 		data['indig_females'] = getCellValue(wb,'T 06a','C',46)
 		data['indig_persons'] = getCellValue(wb,'T 06a','D',46)
@@ -289,33 +323,41 @@ for i, sa2 in enumerate(sa2s[:2]):
 
 		for x in range(11,45):
 			countryItem = {}
-			countryItem['country'] = getCellValue(wb,'T 08','A',x).strip()
-			countryItem['males'] = getCellValue(wb,'T 08','F',x)
-			countryItem['females'] = getCellValue(wb,'T 08','G',x)
+			countryItem['label'] = getCellValue(wb,'T 08','A',x).strip()
 			countryItem['persons'] = getCellValue(wb,'T 08','H',x)
-			
-			# countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','H',x),getCellValue(wb,'T 08','H',49))
-			countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','H',x),getCellValue(wb,'T 08','H',51))
+			# countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','H',x),getCellValue(wb,'T 08','H',49))
+			countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','H',x),getCellValue(wb,'T 08','H',49))
 
 			countriesOfBirth.append(countryItem)
 
 		countriesOfBirth = sorted(countriesOfBirth, key=itemgetter('persons'), reverse=True) 
 		
-		data['countries_of_birth'] = str(countriesOfBirth)
+		data['countries_of_birth'] = json.dumps(countriesOfBirth)
+
+
+		data['born_in_australia'] = getCellValue(wb,'T 08','H',11)
+		data['country_not_stated'] = getCellValue(wb,'T 08','H',47)
+		data['total_country_persons'] = getCellValue(wb,'T 08','H',49)
+
+		data['born_overseas'] = data['total_country_persons'] - data['born_in_australia'] - data['country_not_stated']
+
+		data['percent_born_overseas'] = getPercent(data['born_overseas'],data['total_country_persons'])
+
 
 		ancestries = []
 
 		for x in range(12,43):
-			ancestryItem = {}
-			countryItem['ancestry'] = getCellValue(wb,'T 09b','A',x).strip()
-			ancestryItem['persons'] = getCellValue(wb,'T 09b','G',x)
-			ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09b','G',x),getCellValue(wb,'T 09b','G',45))
+			if getCellValue(wb,'T 09b','A',x).strip() not in ancestryExclude:
+				ancestryItem = {}
+				ancestryItem['label'] = getCellValue(wb,'T 09b','A',x).strip()
+				ancestryItem['persons'] = getCellValue(wb,'T 09b','G',x)
+				ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09b','G',x),getCellValue(wb,'T 09b','G',45))
 
-			ancestries.append(ancestryItem)
+				ancestries.append(ancestryItem)
 
 		ancestries = sorted(ancestries, key=itemgetter('persons'), reverse=True)
 
-		data['ancestries'] = str(ancestries)
+		data['ancestries'] = json.dumps(ancestries)
 
 		# Languages is currently set to work with the 2011 census community profile template to generate test data
 		# and will need to be changed for 2016
@@ -327,27 +369,35 @@ for i, sa2 in enumerate(sa2s[:2]):
 				langItem = {}
 
 				if getCellValue(wb,'T 10','A',x).strip() == "Other(b)":
-					langItem['language'] = "Other Chinese"
+					langItem['label'] = "Other Chinese"
 				else:
-					langItem['language'] = getCellValue(wb,'T 10','A',x).strip()	
-				langItem['persons'] = getCellValue(wb,'T 10','G',x)
+					langItem['label'] = getCellValue(wb,'T 10','A',x).strip()	
+				langItem['persons'] = getCellValue(wb,'T 10','H',x)
 				
 				# langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','G',x),getCellValue(wb,'T 10','L',54))
 
-				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','G',x),getCellValue(wb,'T 10','L',56))
+				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','H',x),getCellValue(wb,'T 10','H',54))
 
 				languages.append(langItem)
 
 		languages = sorted(languages, key=itemgetter('persons'), reverse=True)
 
-		data['languages'] = str(languages)
+		data['languages'] = json.dumps(languages)
+
+		data['language_english'] = getCellValue(wb,'T 10','H',11)
+		data['language_not_stated'] = getCellValue(wb,'T 10','H',52)
+		data['total_language_persons'] = getCellValue(wb,'T 10','H',54)
+
+		data['language_other'] = data['total_language_persons'] - data['language_english'] - data['language_not_stated']
+
+		data['percent_language_other'] = getPercent(data['language_other'],data['total_language_persons'])
 
 		religions = []
 
-		for x in range(14,45):
+		for x in range(13,45):
 			if getCellValue(wb,'T 12b','A',x).strip() not in religionExclude:		
 				religionItem = {}
-				religionItem['religion'] = getCellValue(wb,'T 12b','A',x).strip()
+				religionItem['label'] = getCellValue(wb,'T 12b','A',x).strip()
 				religionItem['persons'] = getCellValue(wb,'T 12b','K',x)
 				religionItem['persons_percent'] = getPercent(getCellValue(wb,'T 12b','K',x),getCellValue(wb,'T 12b','K',47))
 				religions.append(religionItem)
@@ -426,6 +476,14 @@ for i, sa2 in enumerate(sa2s[:2]):
 		data['percent_notmarried_males'] = getPercent(data['notmarried_males'],data['total_relationship_males'])
 		data['percent_notmarried_females'] = getPercent(data['notmarried_females'],data['total_relationship_females'])
 
+
+		data['married_persons'] = data['married_males'] + data['married_females']
+		data['defacto_persons'] = data['defacto_males'] + data['defacto_females']
+		data['notmarried_persons'] = data['notmarried_males'] + data['notmarried_females']
+		data['percent_married_persons'] = getPercent(data['married_persons'],data['total_relationship_persons'])
+		data['percent_defacto_persons'] = getPercent(data['defacto_persons'],data['total_relationship_persons'])
+		data['percent_notmarried_persons'] = getPercent(data['notmarried_persons'],data['total_relationship_persons'])	
+
 		data['indig_males'] = getCellValue(wb,'T 06b','B',27)
 		data['indig_females'] = getCellValue(wb,'T 06b','C',27)
 		data['indig_persons'] = getCellValue(wb,'T 06b','D',27)
@@ -451,33 +509,42 @@ for i, sa2 in enumerate(sa2s[:2]):
 
 		for x in range(11,45):
 			countryItem = {}
-			countryItem['country'] = getCellValue(wb,'T 08','A',x).strip()
-			countryItem['males'] = getCellValue(wb,'T 08','J',x)
-			countryItem['females'] = getCellValue(wb,'T 08','K',x)
+			countryItem['label'] = getCellValue(wb,'T 08','A',x).strip()
 			countryItem['persons'] = getCellValue(wb,'T 08','L',x)
 			
-			# countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','L',x),getCellValue(wb,'T 08','L',49))
-			countryItem['percent_persons'] = getPercent(getCellValue(wb,'T 08','L',x),getCellValue(wb,'T 08','L',51))
+			# countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','L',x),getCellValue(wb,'T 08','L',49))
+			countryItem['persons_percent'] = getPercent(getCellValue(wb,'T 08','L',x),getCellValue(wb,'T 08','L',49))
 
 			countriesOfBirth.append(countryItem)
 
 		countriesOfBirth = sorted(countriesOfBirth, key=itemgetter('persons'), reverse=True) 
 		
-		data['countries_of_birth'] = str(countriesOfBirth)
+		data['countries_of_birth'] = json.dumps(countriesOfBirth)
+
+
+		data['born_in_australia'] = getCellValue(wb,'T 08','L',11)
+		data['country_not_stated'] = getCellValue(wb,'T 08','L',47)
+		data['total_country_persons'] = getCellValue(wb,'T 08','L',49)
+
+		data['born_overseas'] = data['total_country_persons'] - data['born_in_australia'] - data['country_not_stated']
+
+		data['percent_born_overseas'] = getPercent(data['born_overseas'],data['total_country_persons'])
+
 
 		ancestries = []
 
 		for x in range(12,43):
-			ancestryItem = {}
-			countryItem['ancestry'] = getCellValue(wb,'T 09c','A',x).strip()
-			ancestryItem['persons'] = getCellValue(wb,'T 09c','G',x)
-			ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09c','G',x),getCellValue(wb,'T 09c','G',45))
+			if getCellValue(wb,'T 09c','A',x).strip() not in ancestryExclude:	
+				ancestryItem = {}
+				ancestryItem['label'] = getCellValue(wb,'T 09c','A',x).strip()
+				ancestryItem['persons'] = getCellValue(wb,'T 09c','G',x)
+				ancestryItem['persons_percent'] = getPercent(getCellValue(wb,'T 09c','G',x),getCellValue(wb,'T 09c','G',45))
 
-			ancestries.append(ancestryItem)
+				ancestries.append(ancestryItem)
 
 		ancestries = sorted(ancestries, key=itemgetter('persons'), reverse=True)
 
-		data['ancestries'] = str(ancestries)	
+		data['ancestries'] = json.dumps(ancestries)	
 
 		languages = []
 
@@ -486,40 +553,49 @@ for i, sa2 in enumerate(sa2s[:2]):
 				langItem = {}
 
 				if getCellValue(wb,'T 10','A',x).strip() == "Other(b)":
-					langItem['language'] = "Other Chinese"
+					langItem['label'] = "Other Chinese"
 				else:
-					langItem['language'] = getCellValue(wb,'T 10','A',x).strip()	
+					langItem['label'] = getCellValue(wb,'T 10','A',x).strip()	
 				langItem['persons'] = getCellValue(wb,'T 10','L',x)
 
 				# langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','G',x),getCellValue(wb,'T 10','L',54))
 
-				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','G',x),getCellValue(wb,'T 10','L',56))
+				langItem['persons_percent'] = getPercent(getCellValue(wb,'T 10','L',x),getCellValue(wb,'T 10','L',54))
 
 				languages.append(langItem)
 
 		languages = sorted(languages, key=itemgetter('persons'), reverse=True)
 
-		data['languages'] = str(languages)
+		data['languages'] = json.dumps(languages)
+
+		
+		data['language_english'] = getCellValue(wb,'T 10','L',11)
+		data['language_not_stated'] = getCellValue(wb,'T 10','L',52)
+		data['total_language_persons'] = getCellValue(wb,'T 10','L',54)
+
+		data['language_other'] = data['total_language_persons'] - data['language_english'] - data['language_not_stated']
+
+		data['percent_language_other'] = getPercent(data['language_other'],data['total_language_persons'])
 
 		religions = []
 
-		for x in range(14,45):
+		for x in range(13,45):
 			if getCellValue(wb,'T 12c','A',x).strip() not in religionExclude:		
 				religionItem = {}
-				religionItem['religion'] = getCellValue(wb,'T 12c','A',x).strip()
+				religionItem['label'] = getCellValue(wb,'T 12c','A',x).strip()
 				religionItem['persons'] = getCellValue(wb,'T 12c','K',x)
 				religionItem['persons_percent'] = getPercent(getCellValue(wb,'T 12c','K',x),getCellValue(wb,'T 12c','K',47))
 				religions.append(religionItem)
 
 		religions = sorted(religions, key=itemgetter('persons'), reverse=True)
 
-		data['religions'] = str(religions)
+		data['religions'] = json.dumps(religions)
 
 		data['seperate_house'] = getCellValue(wb,'T 15c','H',13)
 		data['seperate_house_percent'] = getPercent(getCellValue(wb,'T 15c','H',13),getCellValue(wb,'T 15c','H',36))
 
-		data['semi_or_townhouse'] = getCellValue(wb,'T 15b','H',19)
-		data['semi_or_townhouse_percent'] = getPercent(getCellValue(wb,'T 15b','H',19),getCellValue(wb,'T 15b','H',36))
+		data['semi_or_townhouse'] = getCellValue(wb,'T 15c','H',19)
+		data['semi_or_townhouse_percent'] = getPercent(getCellValue(wb,'T 15c','H',19),getCellValue(wb,'T 15c','H',36))
 
 		data['flat_or_unit'] = getCellValue(wb,'T 15c','H',26)
 		data['flat_or_unit_percent'] = getPercent(getCellValue(wb,'T 15c','H',26),getCellValue(wb,'T 15c','H',36))
@@ -533,13 +609,12 @@ for i, sa2 in enumerate(sa2s[:2]):
 		data['dwelling_owned_mortgage'] = getCellValue(wb,'T 18b','G',16)
 		data['dwelling_owned_mortgage_percent'] = getPercent(getCellValue(wb,'T 18b','G',16) , getCellValue(wb,'T 18b','G',30))
 
-		data['dwelling_rented'] = getCellValue(wb,'T 18b','G',23)
-		data['dwelling_rented_percent'] = getPercent(getCellValue(wb,'T 18b','G',23) , getCellValue(wb,'T 18b','G', 30))
+		data['dwelling_rented'] = getCellValue(wb,'T 18b','G',25)
+		data['dwelling_rented_percent'] = getPercent(getCellValue(wb,'T 18b','G',25) , getCellValue(wb,'T 18b','G', 30))
 
-		data['dwelling_other_or_not_stated'] = getCellValue(wb,'T 18b','G',27) + getCellValue(wb,'T 18b','G',27)
+		data['dwelling_other_or_not_stated'] = getCellValue(wb,'T 18b','G',27) + getCellValue(wb,'T 18b','G',28)
 		data['dwelling_other_or_not_stated_percent'] = getPercent(data['dwelling_other_or_not_stated'], getCellValue(wb,'T 18b','G',30))
 
 		scraperwiki.sqlite.save(unique_keys=["year","sa2_code"], data=data)
 
 		print "done"
-
