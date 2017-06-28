@@ -6,3 +6,5 @@ If you want tabulated data on June 27, this script converts the community profil
 Or you can download the resulting database [here](https://drive.google.com/file/d/0B1aVLtLn2O4-ZDV1RHVZWnlyY0E/view?usp=sharing).
 
 Feel free to use this, but if you do and you find it useful please let me know.
+
+**Note**: The items that are usually represented as lists, such as language other than english spoken at home, ancestry etc. have been converted to JSON and then written into the SQLlite db as strings. These will need to be converted back into an object, or excluded if you want a CSV. 
